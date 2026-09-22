@@ -25,6 +25,8 @@ grep -q "option enabled '0'" "${fixture}/etc/config/mysqld"
 
 [[ "$(wc -l < "${repo}/files/mariadb/SHA256SUMS")" -eq 7 ]]
 [[ "$(awk '{print $2}' "${repo}/files/mariadb/SHA256SUMS" | sort -u | wc -l)" -eq 7 ]]
+status_fixture="${fixture}/opkg.status"
+: > "${status_fixture}"
 while read -r hash package; do
     [[ "${hash}" =~ ^[a-f0-9]{64}$ && "${package}" == *_aarch64_generic.ipk ]]
     name="${package%%_*}"
@@ -34,7 +36,18 @@ while read -r hash package; do
     if [[ "${name}" == sudo ]]; then
         [[ "${version}" == '1.9.17_p2-r1' ]]
     fi
+    printf 'Package: %s\nVersion: %s\nStatus: install ok installed\n\n' "${name}" "${version}" >> "${status_fixture}"
 done < "${repo}/files/mariadb/SHA256SUMS"
+bash "${repo}/files/verify_mariadb_status.sh" "${status_fixture}" "${repo}/files/mariadb/SHA256SUMS"
+sed -i 's/Version: 1.9.17_p2-r1/Version: 1.9.17/' "${status_fixture}"
+if bash "${repo}/files/verify_mariadb_status.sh" "${status_fixture}" "${repo}/files/mariadb/SHA256SUMS" 2>/dev/null; then
+    echo 'Package validation accepted the wrong sudo version.' >&2
+    exit 1
+fi
+if bash "${repo}/files/verify_mariadb_status.sh" "${fixture}/missing.status" "${repo}/files/mariadb/SHA256SUMS" 2>/dev/null; then
+    echo 'Package validation accepted a missing package database.' >&2
+    exit 1
+fi
 
 if bash "${repo}/files/e20c-data-mounted" 2>/dev/null; then
     echo 'Data guard accepted a host without E20C /data.' >&2

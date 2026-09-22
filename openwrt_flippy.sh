@@ -76,15 +76,8 @@ mount -o ro "${loopdev}p2" "${verify_dir}/root"
 [[ -s "${verify_dir}/root/etc/board.d/00_model" ]] || fail "E20C board configuration is missing from the image."
 grep -q 'radxa,e20c' "${verify_dir}/root/etc/board.d/00_model" || fail "Unexpected board configuration."
 [[ "$(blkid -s TYPE -o value "${loopdev}p1")" == ext4 && "$(blkid -s TYPE -o value "${loopdev}p2")" == btrfs ]] || fail 'Unexpected image filesystems.'
-for package in mariadb-server mariadb-server-base mariadb-client; do
-    chroot "${verify_dir}/root" /bin/opkg status "${package}" | grep -qx 'Version: 11.4.8-r2' || fail "MariaDB package version missing: ${package}."
-done
-while read -r checksum filename; do
-    package="${filename%%_*}"
-    version="${filename#*_}"
-    version="${version%_aarch64_generic.ipk}"
-    chroot "${verify_dir}/root" /bin/opkg status "${package}" | grep -qx "Version: ${version}" || fail "Locked dependency missing: ${package} ${version}."
-done < "${PACKIT_DIR}/files/mariadb/SHA256SUMS"
+bash "${PACKIT_DIR}/files/verify_mariadb_status.sh" \
+    "${verify_dir}/root/usr/lib/opkg/status" "${PACKIT_DIR}/files/mariadb/SHA256SUMS" || fail 'Locked MariaDB packages are missing from the image.'
 chroot "${verify_dir}/root" /usr/bin/mysqld --version | grep -q '11.4.8' || fail 'MariaDB server binary is invalid.'
 chroot "${verify_dir}/root" /usr/bin/mysql --version | grep -q '11.4.8' || fail 'MariaDB client binary is invalid.'
 for service in mysqld dockerd; do
