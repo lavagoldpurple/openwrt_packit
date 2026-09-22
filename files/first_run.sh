@@ -1,266 +1,127 @@
-#!/bin/bash
+#!/bin/sh
+set -eu
 
-MYSELF=$0
+fail() { echo "E20C first boot: $*" >&2; exit 1; }
 
-function destory_myself() {
-    rm -f $MYSELF /etc/part_size
-    mv -f /etc/rc.local.orig /etc/rc.local
-}
+[ -f /etc/part_size ] || fail 'Missing partition layout marker.'
+read -r skip_mib boot_mib root_mib < /etc/part_size
+[ "$skip_mib:$boot_mib:$root_mib" = '16:512:4096' ] || fail 'Unexpected partition layout.'
 
-if [ ! -f /etc/part_size ];then
-    echo "/etc/part_size 不存在！"
-    destory_myself
-    exit 1
-fi
-
-# 找到 root 所在的分区
-ROOT_PTNAME=$(df / | tail -n1 | awk '{print $1}' | awk -F '/' '{print $3}')
-if [ "$ROOT_PTNAME" == "" ];then
-    echo "找不到根文件系统对应的分区!"
-    destory_myself
-    exit 1
-fi
-
-# 找到分区所在的磁盘, 仅支持 mmcblk?p?  nvme?n?p? sd?? hd?? vd??等格式
-case $ROOT_PTNAME in 
-       mmcblk?p[1-4]) DISK_NAME=$(echo $ROOT_PTNAME | awk '{print substr($1, 1, length($1)-2)}');;
-           nvme?n?p?) DISK_NAME=$(echo $ROOT_PTNAME | awk '{print substr($1, 1, length($1)-2)}');;
-   [hsv]d[a-z][1-9]*) DISK_NAME=$(echo $ROOT_PTNAME | awk '{print substr($1, 1, length($1)-1)}');;
-		   *) echo "无法识别 $ROOT_PTNAME 的磁盘类型!"
-		      destory_myself
-		      exit 1
-		   ;;
+root_device="$(findmnt -n -o SOURCE /)"
+case "$root_device" in
+    /dev/mmcblk[0-9]*p2) disk="${root_device%p2}" ;;
+    *) fail "Unexpected root device: $root_device" ;;
 esac
-echo "Root disk name: ${DISK_NAME}"
+[ "$(findmnt -n -o SOURCE /boot)" = "${disk}p1" ] || fail 'Boot is not on the root disk.'
+[ "$(findmnt -n -o FSTYPE /)" = btrfs ] || fail 'Root filesystem is not Btrfs.'
+[ "$(findmnt -n -o FSTYPE /boot)" = ext4 ] || fail 'Boot filesystem is not ext4.'
+[ "$(cat "/sys/class/block/${disk##*/}/device/type")" = MMC ] || fail 'Root disk is not eMMC.'
+tr -d '\000' < /proc/device-tree/model | grep -qi E20C || fail 'This is not an E20C board.'
+[ -x /usr/libexec/e20c-data-mounted ] || fail 'Missing data mount guard.'
 
-# 第一次运行，需要修复磁盘大小
-printf 'f\n' | parted ---pretend-input-tty /dev/${DISK_NAME} print || fail=1
-if [ "$fail" == "1" ];then
-	echo "分区表未修复！需要手动执行 $MYSELF"
-	exit 1
+# Repair the backup GPT after an image is written to larger eMMC.
+parted -s -f "$disk" print >/dev/null || fail 'Cannot inspect or repair the GPT.'
+table="$(parted -m -s "$disk" unit s print)" || fail 'Cannot read the partition table.'
+numbers="$(printf '%s\n' "$table" | awk -F: '$1 ~ /^[0-9]+$/ { printf "%s%s", sep, $1; sep="," }')"
+case "$numbers" in 1,2|1,2,3) ;; *) fail "Unexpected partitions: $numbers" ;; esac
+
+partition_start() { printf '%s\n' "$table" | awk -F: -v number="$1" '$1 == number { gsub(/s/, "", $2); print $2 }'; }
+partition_size() { printf '%s\n' "$table" | awk -F: -v number="$1" '$1 == number { gsub(/s/, "", $4); print $4 }'; }
+partition_end() { printf '%s\n' "$table" | awk -F: -v number="$1" '$1 == number { gsub(/s/, "", $3); print $3 }'; }
+[ "$(partition_start 1):$(partition_size 1)" = '32768:1048576' ] || fail 'Unexpected boot partition geometry.'
+[ "$(partition_start 2):$(partition_size 2)" = '1081344:8388608' ] || fail 'Unexpected root partition geometry.'
+data_start=9469952
+disk_sectors="$(blockdev --getsz "$disk")"
+[ "$((disk_sectors - data_start))" -ge 2097152 ] || fail 'Less than 1 GiB remains for data.'
+
+data_device="${disk}p3"
+if [ -z "$(partition_start 3)" ]; then
+    touch /etc/e20c-data-create-pending
+    sync
+    parted -s -f "$disk" mkpart primary ext4 "${data_start}s" 100% || fail 'Cannot create p3.'
+    partprobe "$disk" || true
+    table="$(parted -m -s "$disk" unit s print)" || fail 'Cannot reread GPT.'
 fi
+[ "$(partition_start 3)" = "$data_start" ] || fail 'Unexpected p3 start; refusing to format.'
+[ "$(partition_end 3)" -ge "$((disk_sectors - 4096))" ] || fail 'p3 does not occupy the remaining eMMC space.'
+attempt=0
+until [ -b "$data_device" ]; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -le 10 ] || fail 'p3 block device did not appear.'
+    sleep 1
+done
 
-CURRENT_PT_CNT=$(parted /dev/${DISK_NAME} print | awk '$1~/[1-9]+/ {print $1}' | wc -l)
-if [ "$CURRENT_PT_CNT" != "2" ];then
-    echo "现存分区数量不为2,放弃!"
-    destory_myself
-    exit 1
-fi
-
-DISK_TOTAL_B=$(lsblk -b -l | grep disk | grep -E "^${DISK_NAME}\s" | awk '{print $4}')
-SKIP_MiB=$(awk '{print $1}' /etc/part_size)
-BOOT_MiB=$(awk '{print $2}' /etc/part_size)
-ROOTFS_MiB=$(awk '{print $3}' /etc/part_size)
-
-USED_MiB=$((SKIP_MiB + BOOT_MiB + ROOTFS_MiB + 1))
-AVAIABLE_MiB=$(( (DISK_TOTAL_B / 1024 / 1024) - USED_MiB))
-
-echo "Disk total bytes: ${DISK_TOTAL_B}"
-echo "Used MBytes: ${USED_MiB}"
-echo "Avaiable MBytes: ${AVAIABLE_MiB}"
-
-if [[ $AVAIABLE_MiB -lt $ROOTFS_MiB ]];then
-    echo "磁盘空闲空间不满足扩展分区的要求！"
-    destory_myself
-    exit 1
-fi
-
-TARGET_ROOTFS2_FSTYPE=btrfs
-TARGET_SHARED_FSTYPE=btrfs
-
-echo "create new partition ... "
-START_P3=$(( (SKIP_MiB + BOOT_MiB + ROOTFS_MiB) * 1024 * 1024 ))
-END_P3=$((ROOTFS_MiB * 1024 * 1024 + START_P3 -1))
-parted /dev/${DISK_NAME} mkpart primary ${TARGET_ROOTFS2_FSTYPE} ${START_P3}b ${END_P3}b
-
-START_P4=$((END_P3 + 1))
-parted /dev/${DISK_NAME} mkpart primary "${TARGET_SHARED_FSTYPE}" ${START_P4}b "100%"
-echo "done"
-parted /dev/${DISK_NAME} unit MiB print
-
-# mkfs
-case $DISK_NAME in 
-   mmcblk*) PT_PRE=${DISK_NAME}p
-	    LB_PRE="MMC_"
-	    ;;
-     nvme*) PT_PRE=${DISK_NAME}p
-	    LB_PRE="NVME_"
-	    ;;
-	 *) PT_PRE=${DISK_NAME}
-	    LB_PRE=""
-	    ;;
+type="$(blkid -s TYPE -o value "$data_device" 2>/dev/null || true)"
+label="$(blkid -s LABEL -o value "$data_device" 2>/dev/null || true)"
+case "$type:$label" in
+    :) mkfs.ext4 -F -L E20C_DATA "$data_device" || fail 'Cannot format p3.' ;;
+    ext4:E20C_DATA) ;;
+    *)
+        [ -f /etc/e20c-data-create-pending ] || fail "Existing p3 contains unexpected filesystem ($type, $label)."
+        wipefs --all --force "$data_device" || fail 'Cannot clear old data signature on newly created p3.'
+        mkfs.ext4 -F -L E20C_DATA "$data_device" || fail 'Cannot format p3.'
+        ;;
 esac
-echo "create rootfs2 filesystem ... "
-mkdir -p /mnt/${PT_PRE}3
-case $TARGET_ROOTFS2_FSTYPE in
-	xfs) mkfs.xfs   -f -L "${LB_PRE}ROOTFS2" "/dev/${PT_PRE}3"
-	     mount -t xfs     "/dev/${PT_PRE}3" "/mnt/${PT_PRE}3"
-	     ;;
-      btrfs) mkfs.btrfs -f -L "${LB_PRE}ROOTFS2" "/dev/${PT_PRE}3" 
-	     mount -t btrfs   "/dev/${PT_PRE}3" "/mnt/${PT_PRE}3"
-	     ;; 
-	  *) mkfs.ext4  -F -L "${LB_PRE}ROOTFS2" "/dev/${PT_PRE}3"
-	     mount -t ext4    "/dev/${PT_PRE}3" "/mnt/${PT_PRE}3"
-	     ;;
-esac
-echo "done"
+mkdir -p /data
+if ! mountpoint -q /data; then mount -t ext4 "$data_device" /data || fail 'Cannot mount /data.'; fi
+/usr/libexec/e20c-data-mounted || fail 'Mounted data partition did not pass validation.'
+uuid="$(blkid -s UUID -o value "$data_device")"
+[ -n "$uuid" ] || fail 'p3 has no filesystem UUID.'
+uci set fstab.data=mount
+uci set fstab.data.target='/data'
+uci set fstab.data.uuid="$uuid"
+uci set fstab.data.fstype='ext4'
+uci set fstab.data.enabled='1'
+uci commit fstab
 
-echo "create shared filesystem ... "
-mkdir -p /mnt/${PT_PRE}4
-case $TARGET_SHARED_FSTYPE in
-	xfs) mkfs.xfs   -f -L "${LB_PRE}SHARED" "/dev/${PT_PRE}4"
-	     mount -t xfs     "/dev/${PT_PRE}4" "/mnt/${PT_PRE}4"
-	     ;;
-      btrfs) mkfs.btrfs -f -L "${LB_PRE}SHARED" "/dev/${PT_PRE}4"
-	     mount -t btrfs   "/dev/${PT_PRE}4" "/mnt/${PT_PRE}4"
-	     ;; 
-	  *) mkfs.ext4  -F -L "${LB_PRE}SHARED" "/dev/${PT_PRE}4"
-	     mount -t ext4    "/dev/${PT_PRE}4" "/mnt/${PT_PRE}4"
-	     ;;
-esac
-echo "done"
+mkdir -p /data/mysql /data/mysql-logs /data/docker /data/AdGuardHome/data
+chown -R mariadb:mariadb /data/mysql /data/mysql-logs
+chmod 750 /data/mysql /data/mysql-logs
 
-# 新分区建立成功后, 允许在非EMMC设备上也启用docker
-# init dockerd
-echo "Init the dockerd configs ... "
-
-if [ -f /etc/init.d/dockerman ];then
-    echo -n "stop dockerman ... "
-    /etc/init.d/dockerman stop
-    echo "ok"
-
-    echo -n "disable dockerman ... "
-    /etc/init.d/dockerman disable
-    echo "ok"
+if [ -e /opt/docker ] && [ ! -L /opt/docker ]; then
+    rmdir /opt/docker || fail '/opt/docker contains data; refusing to replace it.'
 fi
-
-echo -n "stop dockerd ... "
-/etc/init.d/dockerd stop
-echo "ok"
-
-echo -n "disable dockerd ... "
-/etc/init.d/dockerd disable
-echo "ok"
-
-mkdir -p "/mnt/${PT_PRE}4/docker"
-rm -rf "/opt/docker"
-ln -sf "/mnt/${PT_PRE}4/docker/" "/opt/docker"
-cat > /etc/docker/daemon.json <<EOF
-{
-  "bip": "172.31.0.1/24",
-  "data-root": "/mnt/${PT_PRE}4/docker/",
-  "log-level": "warn",
-  "log-driver": "json-file",
-  "log-opts": {
-     "max-size": "10m",
-     "max-file": "5"
-   },
-  "registry-mirrors": [
-     "https://mirror.baidubce.com/",
-     "https://hub-mirror.c.163.com"
-   ]
-}
-EOF
-echo "done"
-
-echo -n "enable dockerd ... "
-/etc/init.d/dockerd enable
-echo "ok"
-
-echo -n "starting dockerd ... "
-/etc/init.d/dockerd start
-echo "ok"
-
-if [ -f /etc/init.d/dockerman ];then
-     if [ -f "/etc/docker/daemon.json" ] && [ -x "/usr/bin/jq" ];then
-        data_root=$(jq -r '."data-root"' /etc/docker/daemon.json)
-
-        bip=$(jq -r '."bip"' /etc/docker/daemon.json)
-        [ "$bip" == "null" ] && bip="172.31.0.1/24"
-
-        log_level=$(jq -r '."log-level"' /etc/docker/daemon.json)
-        [ "$log_level" == "null" ] && log_level="warn"
-
-        _iptables=$(jq -r '."iptables"' /etc/docker/daemon.json)
-        [ "$_iptables" == "null" ] && _iptables="true"
-
-        registry_mirrors=$(jq -r '."registry-mirrors"[]' /etc/docker/daemon.json 2>/dev/null)
-    fi
-
-    if [ "$data_root" == "" ];then
-         data_root="/opt/docker/" # the default data root
-    fi
-
-    if ! uci get dockerd.globals >/dev/null 2>&1;then
-        uci set dockerd.globals='globals'
-        uci commit
-    fi
-
-    # delete alter config , use inner config
-    if uci get dockerd.globals.alt_config_file >/dev/null 2>&1;then
-        uci delete dockerd.globals.alt_config_file
-        uci commit
-    fi
-
-    uci set dockerd.globals.data_root=$data_root
-    [ "$bip" != "" ] && uci set dockerd.globals.bip=$bip
-    [ "$log_level" != "" ] && uci set dockerd.globals.log_level=$log_level
-    [ "$_iptables" != "" ] && uci set dockerd.globals.iptables=$_iptables
-    if [ "$registry_mirrors" != "" ];then
-        for reg in $registry_mirrors;do
-            uci add_list dockerd.globals.registry_mirrors=$reg
-        done
-    fi
+ln -sfn /data/docker /opt/docker
+if [ -f /etc/config/dockerd ]; then
+    uci set dockerd.globals=globals
+    uci set dockerd.globals.data_root='/data/docker'
     uci set dockerd.globals.auto_start='1'
-    uci commit
-
-    echo -n "enable dockerman ... "
-    /etc/init.d/dockerman enable
-    echo "ok"
-
-    echo -n "starting dockerman ... "
-    /etc/init.d/dockerman start
-    echo "ok"
+    uci commit dockerd
 fi
 
-# init AdguardHome
-echo "Init the Adguard config ... "
-if [ -f "/etc/config/AdGuardHome" ];then
-    mkdir -p "/mnt/${PT_PRE}4/AdGuardHome/data"
-    rm -rf "/usr/bin/AdGuardHome"
-    ln -sf "/mnt/${PT_PRE}4/AdGuardHome" "/usr/bin/AdGuardHome"
+if [ -f /etc/config/AdGuardHome ]; then
+    if [ -e /usr/bin/AdGuardHome ] && [ ! -L /usr/bin/AdGuardHome ]; then
+        [ -d /usr/bin/AdGuardHome ] || fail 'Unexpected AdGuardHome binary path.'
+        cp -a /usr/bin/AdGuardHome/. /data/AdGuardHome/ || fail 'Cannot migrate AdGuardHome files.'
+        mv /usr/bin/AdGuardHome /usr/bin/AdGuardHome.e20c-staged
+    fi
+    ln -sfn /data/AdGuardHome /usr/bin/AdGuardHome
 fi
+
+uci set mysqld.general.enabled='1'
+uci commit mysqld
+/etc/init.d/mysqld enable
+/etc/init.d/mysqld start || fail 'MariaDB did not start; first boot will retry.'
+attempt=0
+until mysql --protocol=socket -uroot -e 'SELECT VERSION()' >/dev/null 2>&1; do
+    attempt=$((attempt + 1))
+    [ "$attempt" -le 30 ] || fail 'MariaDB local connection failed; first boot will retry.'
+    sleep 1
+done
+
+if [ -f /etc/init.d/dockerd ]; then
+    /etc/init.d/dockerd enable
+    /etc/init.d/dockerd start || fail 'Docker did not start; first boot will retry.'
+fi
+
+for service in AdGuardHome nfsd; do
+    if [ -x "/etc/init.d/$service" ] && "/etc/init.d/$service" enabled; then
+        "/etc/init.d/$service" start || echo "E20C first boot: optional $service did not start." >&2
+    fi
+done
+
+[ -f /etc/rc.local.orig ] || fail 'Missing original rc.local.'
+mv /etc/rc.local.orig /etc/rc.local
+rm -f /etc/part_size /etc/e20c-data-create-pending /etc/first_run.sh
 sync
-echo "done"
-
-# Modify nfs config
-echo "Fix nfs config ... "
-if [ -f "/etc/exports" ];then
-cat > /etc/exports <<EOF
-
-/mnt    *(ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash)
-/mnt/${PT_PRE}4  *(rw,fsid=1,sync,no_subtree_check,no_root_squash)
-EOF
-fi
-
-if [ -f "/etc/config/nfs" ];then
-cat > /etc/config/nfs <<EOF
-config share
-        option clients '*'
-        option enabled '1'
-        option path '/mnt'
-        option options 'ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash'
-
-config share
-        option enabled '1'
-        option path '/mnt/${PT_PRE}4'
-        option clients '*'
-        option options 'rw,fsid=1,sync,no_subtree_check,no_root_squash'
-EOF
-fi
-echo "done"
-
-echo "clean ... "
-destory_myself
-echo "done"
-echo "The end."
+echo 'E20C first boot: /data and local MariaDB are ready.'

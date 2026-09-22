@@ -1,0 +1,22 @@
+#!/bin/sh
+
+root_device="$(findmnt -n -o SOURCE /)"
+case "${root_device}" in
+    /dev/mmcblk[0-9]*p2) data_device="${root_device%p2}p3" ;;
+    *) echo 'E20C data guard: unexpected root device.' >&2; exit 1 ;;
+esac
+disk="${root_device%p2}"
+[ "$(cat "/sys/class/block/${disk##*/}/device/type" 2>/dev/null)" = MMC ] || {
+    echo 'E20C data guard: root disk is not eMMC.' >&2
+    exit 1
+}
+
+[ "$(findmnt -n -o SOURCE /data 2>/dev/null)" = "${data_device}" ] &&
+[ "$(findmnt -n -o FSTYPE /data 2>/dev/null)" = ext4 ] || {
+    echo 'E20C data guard: /data is not mounted from the system disk.' >&2
+    exit 1
+}
+[ "$(blkid -s LABEL -o value "${data_device}" 2>/dev/null)" = E20C_DATA ] || {
+    echo 'E20C data guard: unexpected data filesystem label.' >&2
+    exit 1
+}

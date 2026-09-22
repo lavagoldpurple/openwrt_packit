@@ -22,8 +22,11 @@ jobs:
 
       - name: Check asset validation
         run: |
+          bash -n openwrt_flippy.sh mk_rk3528_e20c.sh public_funcs files/install_mariadb.sh files/configure_e20c_services.sh
+          sh -n files/first_run.sh files/e20c-data-mounted
           bash tests/test_e20c_assets.sh
           bash tests/test_e20c_cleanup.sh
+          bash tests/test_e20c_single_system.sh
 
       - name: Package E20C image
         uses: ./

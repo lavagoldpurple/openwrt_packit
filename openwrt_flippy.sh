@@ -50,6 +50,14 @@ shopt -s nullglob
 images=("${OUTPUT_DIR}"/openwrt_rk3528_e20c_*.img)
 [[ "${#images[@]}" -eq 1 && -s "${images[0]}" ]] || fail "Expected exactly one non-empty E20C image."
 parted -s "${images[0]}" print >/dev/null || fail "E20C image partition table is invalid."
+partition_layout="$(parted -m -s "${images[0]}" unit s print)"
+partition_numbers="$(printf '%s\n' "${partition_layout}" | awk -F: '$1 ~ /^[0-9]+$/ { printf "%s%s", sep, $1; sep="," }')"
+[[ "${partition_numbers}" == '1,2' ]] || fail "Expected only boot and root partitions, got: ${partition_numbers}."
+for specification in '1:32768:1048576' '2:1081344:8388608'; do
+    IFS=: read -r number expected_start expected_size <<< "${specification}"
+    actual="$(printf '%s\n' "${partition_layout}" | awk -F: -v number="${number}" '$1 == number { gsub(/s/, "", $2); gsub(/s/, "", $4); print $2 ":" $4 }')"
+    [[ "${actual}" == "${expected_start}:${expected_size}" ]] || fail "Unexpected partition ${number} geometry: ${actual}."
+done
 
 verify_dir="$(mktemp -d)"
 mkdir -p "${verify_dir}/boot" "${verify_dir}/root"
@@ -67,6 +75,27 @@ mount -o ro "${loopdev}p2" "${verify_dir}/root"
 [[ -s "${verify_dir}/boot/dtb/rockchip/rk3528-radxa-e20c.dtb" ]] || fail "E20C DTB is missing from the image."
 [[ -s "${verify_dir}/root/etc/board.d/00_model" ]] || fail "E20C board configuration is missing from the image."
 grep -q 'radxa,e20c' "${verify_dir}/root/etc/board.d/00_model" || fail "Unexpected board configuration."
+[[ "$(blkid -s TYPE -o value "${loopdev}p1")" == ext4 && "$(blkid -s TYPE -o value "${loopdev}p2")" == btrfs ]] || fail 'Unexpected image filesystems.'
+for package in mariadb-server mariadb-server-base mariadb-client; do
+    chroot "${verify_dir}/root" /bin/opkg status "${package}" | grep -qx 'Version: 11.4.8-r2' || fail "MariaDB package version missing: ${package}."
+done
+while read -r checksum filename; do
+    package="${filename%%_*}"
+    version="${filename#*_}"
+    version="${version%%_*}"
+    chroot "${verify_dir}/root" /bin/opkg status "${package}" | grep -qx "Version: ${version}" || fail "Locked dependency missing: ${package} ${version}."
+done < "${PACKIT_DIR}/files/mariadb/SHA256SUMS"
+chroot "${verify_dir}/root" /usr/bin/mysqld --version | grep -q '11.4.8' || fail 'MariaDB server binary is invalid.'
+chroot "${verify_dir}/root" /usr/bin/mysql --version | grep -q '11.4.8' || fail 'MariaDB client binary is invalid.'
+for service in mysqld dockerd; do
+    grep -q '/usr/libexec/e20c-data-mounted' "${verify_dir}/root/etc/init.d/${service}" || fail "Missing data guard for ${service}."
+done
+[[ -x "${verify_dir}/root/usr/libexec/e20c-data-mounted" && -f "${verify_dir}/root/etc/mysql/conf.d/90-e20c.cnf" ]] || fail 'MariaDB data configuration is missing.'
+grep -qx 'datadir=/data/mysql' "${verify_dir}/root/etc/mysql/conf.d/90-e20c.cnf" || fail 'MariaDB data directory is incorrect.'
+chroot "${verify_dir}/root" /bin/sh -c 'for tool in findmnt parted partprobe blockdev blkid mountpoint mkfs.ext4 wipefs uci; do command -v "$tool" >/dev/null || exit 1; done' || fail 'Required first-boot disk tool is missing.'
+for obsolete in openwrt-update-rockchip openwrt-kernel openwrt-backup openwrt-ddbr flippy; do
+    [[ ! -e "${verify_dir}/root/usr/sbin/${obsolete}" ]] || fail "Obsolete online updater is present: ${obsolete}."
+done
 for specification in 'idbloader.img:64' 'u-boot.itb:16384'; do
     file="${specification%:*}"
     offset="${specification#*:}"

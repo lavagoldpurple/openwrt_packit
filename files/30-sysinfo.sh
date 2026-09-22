@@ -11,7 +11,7 @@ MOTD_DISABLE=""
 
 SHOW_IP_PATTERN="^[ewr].*|^br.*|^lt.*|^umts.*"
 
-DATA_STORAGE=/userdisk/data
+DATA_STORAGE=/data
 MEDIA_STORAGE=/userdisk/snail
 
 [[ -f /etc/default/motd ]] && . /etc/default/motd
@@ -88,13 +88,7 @@ function storage_info()
 
 function get_data_storage()
 {
-    if which lsblk >/dev/null;then
-	root_name=$(lsblk -l -o NAME,MOUNTPOINT | awk '$2~/^\/$/ {print $1'})
-	mmc_name=$(echo $root_name | awk '{print substr($1,1,length($1)-2);}')
-	if echo $mmc_name | grep mmcblk >/dev/null;then
-	    DATA_STORAGE="/mnt/${mmc_name}p4"
-	fi
-    fi
+    mountpoint -q /data && DATA_STORAGE=/data
 }
 
 # query various systems and send some stuff to the background for overall faster execution.

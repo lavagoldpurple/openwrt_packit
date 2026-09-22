@@ -938,12 +938,6 @@ function copy_supplement_files() {
               rm -f ./etc/bench.log && \
               echo "17 3 * * * /etc/coremark.sh" >> ./etc/crontabs/root
 
-        [ -n "$OPENWRT_KERNEL" ] && [ -f ${OPENWRT_KERNEL} ] && cp -v ${OPENWRT_KERNEL} ./usr/sbin/
-        [ -n "$OPENWRT_BACKUP" ] && [ -f ${OPENWRT_BACKUP} ] && cp -v ${OPENWRT_BACKUP} ./usr/sbin/ && (cd usr/sbin && ln -sfv openwrt-backup flippy)
-        [ -n "$OPENWRT_UPDATE" ] && [ -f ${OPENWRT_UPDATE} ] && cp -v ${OPENWRT_UPDATE} ./usr/sbin/
-	[ -n "${DDBR}" ] && [ -f "${DDBR}" ] && cp -v ${DDBR} ./usr/sbin/
-
-
         [ -n "$BAL_ETH_IRQ" ] && [ -f $BAL_ETH_IRQ ] && cp -v $BAL_ETH_IRQ ./usr/sbin && chmod 755 ./usr/sbin/balethirq.pl && \
               sed -e "/exit/i\/usr/sbin/balethirq.pl" -i etc/rc.local
 
@@ -1113,21 +1107,14 @@ function adjust_nfs_config() {
 # /srv/nfs4/homes  gss/krb5i(rw,sync,no_subtree_check)
 #
 
-/mnt *(ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash)
-/mnt/${mount_point} *(rw,fsid=1,sync,no_subtree_check,no_root_squash)
+${mount_point} *(rw,fsid=0,sync,no_subtree_check,no_root_squash)
 EOF
              cat > ./etc/config/nfs <<EOF
-config share
-        option clients '*'
+config share 'data'
         option enabled '1'
-        option path '/mnt'
-        option options 'ro,fsid=0,sync,nohide,no_subtree_check,insecure,no_root_squash'
-
-config share
-        option enabled '1'
-        option path '/mnt/${mount_point}'
+        option path '${mount_point}'
         option clients '*'
-        option options 'rw,fsid=1,sync,no_subtree_check,no_root_squash'
+        option options 'rw,fsid=0,sync,no_subtree_check,no_root_squash'
 EOF
         fi
 
@@ -1326,9 +1313,7 @@ function config_first_run() {
          cd $TGT_ROOT
          # First run, 第一次启动时自动创建新分区及格式化
          if [ -n "$FIRSTRUN_SCRIPT" ] && [ -f "$FIRSTRUN_SCRIPT" ];then
-              cp -v "$FIRSTRUN_SCRIPT" ./etc/first_run.sh && \
-                  sed -e "s/MYSELF=\$0/MYSELF=\"\/etc\/first_run.sh\"/" -i ./etc/first_run.sh && \
-                  chmod 755 ./etc/first_run.sh
+              cp -v "$FIRSTRUN_SCRIPT" ./etc/first_run.sh && chmod 755 ./etc/first_run.sh
               cp -v "./etc/rc.local" "./etc/rc.local.orig"
               echo -e "${SKIP_MB}\t${BOOT_MB}\t${ROOTFS_MB}" > ./etc/part_size
               sed -e "/exit/i\/etc/first_run.sh >/root/first_run.log 2>&1" -i etc/rc.local

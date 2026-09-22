@@ -1,0 +1,5 @@
+[mysqld]
+datadir=/data/mysql
+bind-address=127.0.0.1
+log_error=/data/mysql-logs/error.log
+innodb_flush_log_at_trx_commit=1

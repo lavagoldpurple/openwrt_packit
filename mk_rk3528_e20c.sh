@@ -90,12 +90,8 @@ DOCKER_README="${PWD}/files/DockerReadme.pdf"
 SYSINFO_SCRIPT="${PWD}/files/30-sysinfo.sh"
 
 # 20210923 add
-OPENWRT_KERNEL="${PWD}/files/openwrt-kernel"
-OPENWRT_BACKUP="${PWD}/files/openwrt-backup"
-OPENWRT_UPDATE="${PWD}/files/openwrt-update-rockchip"
 # 20211214 add
 P7ZIP="${PWD}/files/7z"
-DDBR="${PWD}/files/openwrt-ddbr"
 # 20220225 add
 SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,chacha20-poly1305@openssh.com"
 SSHD_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr"
@@ -113,16 +109,17 @@ check_depends
 
 SKIP_MB=16
 BOOT_MB=512
-ROOTFS_MB=2048
+ROOTFS_MB=4096
 SIZE=$((SKIP_MB + BOOT_MB + ROOTFS_MB + 1))
 create_image "$TGT_IMG" "$SIZE"
-create_partition "$TGT_DEV" "gpt" "$SKIP_MB" "$BOOT_MB" "ext4" "0" "-1" "btrfs"
-make_filesystem "$TGT_DEV" "B" "ext4" "EMMC_BOOT" "R" "btrfs" "EMMC_ROOTFS1"
+create_partition "$TGT_DEV" "gpt" "$SKIP_MB" "$BOOT_MB" "ext4" "0" "$ROOTFS_MB" "btrfs"
+make_filesystem "$TGT_DEV" "B" "ext4" "EMMC_BOOT" "R" "btrfs" "EMMC_ROOTFS"
 mount_fs "${TGT_DEV}p1" "${TGT_BOOT}" "ext4"
 mount_fs "${TGT_DEV}p2" "${TGT_ROOT}" "btrfs" "compress=zstd:${ZSTD_LEVEL}"
 echo "创建 /etc 子卷 ..."
 btrfs subvolume create $TGT_ROOT/etc
 extract_rootfs_files
+bash "${PWD}/files/install_mariadb.sh" "${TGT_ROOT}" || exit 1
 extract_rockchip_boot_files
 
 echo "修改引导分区相关配置 ... "
@@ -146,11 +143,12 @@ cd $TGT_ROOT
 copy_supplement_files
 extract_glibc_programs
 adjust_docker_config
+bash "${PWD}/files/configure_e20c_services.sh" "${TGT_ROOT}" || exit 1
 adjust_openssl_config
 adjust_qbittorrent_config
 adjust_getty_config
 adjust_samba_config
-adjust_nfs_config "mmcblk0p4"
+adjust_nfs_config "/data"
 adjust_openssh_config
 adjust_openclash_config
 use_xrayplug_replace_v2rayplug
