@@ -31,17 +31,19 @@ fi
 grep -q '/dev/null' "${fixture}/old.error"
 bash "${repo}/files/verify_first_boot_tools.sh" "${root}"
 [[ ! -e "${root}/dev/null" ]]
+grep -Eq '^for tool in .* fdisk ' "${repo}/files/verify_first_boot_tools.sh"
 
 umount "${root}"
-rm "${root}/usr/sbin/fdisk" "${root}/usr/sbin/blkid" "${root}/usr/sbin/wipefs"
+# BusyBox can resolve its fdisk applet even without the fixture symlink.
+rm "${root}/usr/sbin/blkid" "${root}/usr/sbin/wipefs"
 mount --bind "${root}" "${root}"
 mount -o remount,bind,ro "${root}"
 if output="$(bash "${repo}/files/verify_first_boot_tools.sh" "${root}" 2>&1)"; then
     echo 'Tool validation accepted missing tools.' >&2
     exit 1
 fi
-[[ "${output}" == *'fdisk'* && "${output}" == *'blkid wipefs'* ]] || {
-    echo "Expected all three missing tools to be reported: ${output}" >&2
+[[ "${output}" == *'blkid wipefs'* ]] || {
+    echo "Expected both missing tools to be reported: ${output}" >&2
     exit 1
 }
 echo 'E20C read-only chroot checks passed.'
