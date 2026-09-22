@@ -17,7 +17,7 @@ mkdir -p "${root}/bin" "${root}/usr/sbin" "${root}/dev"
 cp "$(command -v busybox)" "${root}/bin/busybox"
 ln -s busybox "${root}/bin/sh"
 # These executable stand-ins test command discovery, not disk operations.
-for tool in findmnt parted partprobe blkid mountpoint mkfs.ext4 wipefs uci; do
+for tool in findmnt parted fdisk partprobe blkid mountpoint mkfs.ext4 wipefs uci; do
     ln -s /bin/busybox "${root}/usr/sbin/${tool}"
 done
 mount --bind "${root}" "${root}"
@@ -33,15 +33,15 @@ bash "${repo}/files/verify_first_boot_tools.sh" "${root}"
 [[ ! -e "${root}/dev/null" ]]
 
 umount "${root}"
-rm "${root}/usr/sbin/blkid" "${root}/usr/sbin/wipefs"
+rm "${root}/usr/sbin/fdisk" "${root}/usr/sbin/blkid" "${root}/usr/sbin/wipefs"
 mount --bind "${root}" "${root}"
 mount -o remount,bind,ro "${root}"
 if output="$(bash "${repo}/files/verify_first_boot_tools.sh" "${root}" 2>&1)"; then
     echo 'Tool validation accepted missing tools.' >&2
     exit 1
 fi
-[[ "${output}" == *'blkid wipefs'* ]] || {
-    echo "Expected both missing tools to be reported: ${output}" >&2
+[[ "${output}" == *'fdisk'* && "${output}" == *'blkid wipefs'* ]] || {
+    echo "Expected all three missing tools to be reported: ${output}" >&2
     exit 1
 }
 echo 'E20C read-only chroot checks passed.'

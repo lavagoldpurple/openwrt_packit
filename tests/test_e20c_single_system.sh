@@ -63,4 +63,10 @@ if grep -Eq 'mkpart.*p4|/mnt/mmcblk[0-9]+p4|ROOTFS2' "${repo}/files/first_run.sh
     echo 'First boot still references the old A/B layout.' >&2
     exit 1
 fi
+if grep -q 'parted -s -f' "${repo}/files/first_run.sh"; then
+    echo 'First boot requires a Parted --fix option absent from the image.' >&2
+    exit 1
+fi
+grep -Fq "printf 'w\\n' | fdisk" "${repo}/files/first_run.sh"
+
 echo 'E20C single-system checks passed.'

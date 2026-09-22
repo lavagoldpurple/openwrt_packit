@@ -19,9 +19,10 @@ esac
 tr -d '\000' < /proc/device-tree/model | grep -qi E20C || fail 'This is not an E20C board.'
 [ -x /usr/libexec/e20c-data-mounted ] || fail 'Missing data mount guard.'
 
-# Repair the backup GPT after an image is written to larger eMMC.
-parted -s -f "$disk" print >/dev/null || fail 'Cannot inspect or repair the GPT.'
+# The bundled Parted 3.4 can inspect an undersized image GPT but has no --fix.
+parted -s "$disk" print >/dev/null || fail 'Cannot inspect the GPT.'
 table="$(parted -m -s "$disk" unit s print)" || fail 'Cannot read the partition table.'
+[ "$(printf '%s\n' "$table" | awk -F: 'NR == 2 { print $4 ":" $5 ":" $6 }')" = '512:512:gpt' ] || fail 'Expected a 512-byte-sector GPT.'
 numbers="$(printf '%s\n' "$table" | awk -F: '$1 ~ /^[0-9]+$/ { printf "%s%s", sep, $1; sep="," }')"
 case "$numbers" in 1,2|1,2,3) ;; *) fail "Unexpected partitions: $numbers" ;; esac
 
@@ -38,9 +39,15 @@ case "$disk_sectors" in ''|*[!0-9]*) fail 'Invalid eMMC sector count.' ;; esac
 
 data_device="${disk}p3"
 if [ -z "$(partition_start 3)" ]; then
+    # Rewriting the validated table relocates its backup GPT to the end of eMMC.
+    printf 'w\n' | fdisk "$disk" >/dev/null || fail 'Cannot relocate the backup GPT.'
+    table="$(parted -m -s "$disk" unit s print)" || fail 'Cannot read relocated GPT.'
+    [ "$(partition_start 1):$(partition_size 1)" = '32768:1048576' ] || fail 'Boot partition changed during GPT repair.'
+    [ "$(partition_start 2):$(partition_size 2)" = '1081344:8388608' ] || fail 'Root partition changed during GPT repair.'
+    [ -z "$(partition_start 3)" ] || fail 'Unexpected p3 after GPT repair.'
     touch /etc/e20c-data-create-pending
     sync
-    parted -s -f "$disk" mkpart primary ext4 "${data_start}s" 100% || fail 'Cannot create p3.'
+    parted -s "$disk" mkpart primary ext4 "${data_start}s" 100% || fail 'Cannot create p3.'
     partprobe "$disk" || true
     table="$(parted -m -s "$disk" unit s print)" || fail 'Cannot reread GPT.'
 fi
