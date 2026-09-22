@@ -85,7 +85,10 @@ for service in mysqld dockerd; do
 done
 [[ -x "${verify_dir}/root/usr/libexec/e20c-data-mounted" && -f "${verify_dir}/root/etc/mysql/conf.d/90-e20c.cnf" ]] || fail 'MariaDB data configuration is missing.'
 grep -qx 'datadir=/data/mysql' "${verify_dir}/root/etc/mysql/conf.d/90-e20c.cnf" || fail 'MariaDB data directory is incorrect.'
-chroot "${verify_dir}/root" /bin/sh -c 'for tool in findmnt parted partprobe blockdev blkid mountpoint mkfs.ext4 wipefs uci; do command -v "$tool" >/dev/null || exit 1; done' || fail 'Required first-boot disk tool is missing.'
+for tool in findmnt parted partprobe blockdev blkid mountpoint mkfs.ext4 wipefs uci; do
+    chroot "${verify_dir}/root" /bin/sh -c 'command -v "$1"' e20c-tool-check "${tool}" >/dev/null ||
+        fail "Required first-boot tool is missing from the image: ${tool}."
+done
 for obsolete in openwrt-update-rockchip openwrt-kernel openwrt-backup openwrt-ddbr flippy; do
     [[ ! -e "${verify_dir}/root/usr/sbin/${obsolete}" ]] || fail "Obsolete online updater is present: ${obsolete}."
 done
