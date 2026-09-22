@@ -43,7 +43,8 @@ while read -r checksum filename; do
     [[ -z "${seen[${filename}]+x}" ]] || { echo "Duplicate package lock: ${filename}" >&2; exit 1; }
     seen["${filename}"]=1
     ((count+=1))
-    if ! (cd "${cache}" && printf '%s  %s\n' "${checksum}" "${filename}" | sha256sum -c --status); then
+    if [[ ! -s "${cache}/${filename}" ]] ||
+        ! (cd "${cache}" && printf '%s  %s\n' "${checksum}" "${filename}" | sha256sum -c --status 2>/dev/null); then
         curl --fail --location --retry 5 --retry-all-errors --retry-delay 5 \
             --output "${cache}/${filename}.part" "${feed}/${filename}"
         mv -f "${cache}/${filename}.part" "${cache}/${filename}"
@@ -62,7 +63,8 @@ mount -t proc proc "${root}/proc"
 mounted_proc=1
 grep -vE '^[[:space:]]*src([[:space:]]|/)' "${root}/etc/opkg.conf" > "${offline_conf}"
 chroot "${root}" /bin/sh -c \
-    'opkg -f /tmp/e20c-mariadb-packages/opkg.conf install /tmp/e20c-mariadb-packages/*.ipk &&
+    'mkdir -p /var/lock &&
+     opkg -f /tmp/e20c-mariadb-packages/opkg.conf install /tmp/e20c-mariadb-packages/*.ipk &&
      /usr/bin/mysqld --version && /usr/bin/mysql --version'
 while read -r checksum filename; do
     package="${filename%%_*}"
