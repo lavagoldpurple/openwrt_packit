@@ -11,7 +11,11 @@ for service in mysqld dockerd AdGuardHome nfsd; do
 done
 printf "config mysqld 'general'\n\toption enabled '1'\n" > "${fixture}/etc/config/mysqld"
 touch "${fixture}/usr/sbin/openwrt-update-rockchip"
-bash "${repo}/files/configure_e20c_services.sh" "${fixture}"
+(cd "${fixture}" && bash "${repo}/files/configure_e20c_services.sh" "${fixture}")
+if grep -q 'bash "${PWD}/files/' "${repo}/mk_rk3528_e20c.sh"; then
+    echo 'E20C packager resolves a helper against its changing working directory.' >&2
+    exit 1
+fi
 for service in mysqld dockerd AdGuardHome nfsd; do
     grep -q 'e20c-data-mounted || return 1' "${fixture}/etc/init.d/${service}"
 done

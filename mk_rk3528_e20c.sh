@@ -1,8 +1,10 @@
 #!/bin/bash
 
+PACKIT_HOME="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+cd "${PACKIT_HOME}" || exit 1
 echo "========================= begin $0 ================="
-source make.env || exit 1
-source public_funcs
+source "${PACKIT_HOME}/make.env" || exit 1
+source "${PACKIT_HOME}/public_funcs"
 init_work_env
 
 # 默认是否开启软件FLOWOFFLOAD
@@ -119,7 +121,7 @@ mount_fs "${TGT_DEV}p2" "${TGT_ROOT}" "btrfs" "compress=zstd:${ZSTD_LEVEL}"
 echo "创建 /etc 子卷 ..."
 btrfs subvolume create $TGT_ROOT/etc
 extract_rootfs_files
-bash "${PWD}/files/install_mariadb.sh" "${TGT_ROOT}" || exit 1
+bash "${PACKIT_HOME}/files/install_mariadb.sh" "${TGT_ROOT}" || exit 1
 extract_rockchip_boot_files
 
 echo "修改引导分区相关配置 ... "
@@ -143,7 +145,7 @@ cd $TGT_ROOT
 copy_supplement_files
 extract_glibc_programs
 adjust_docker_config
-bash "${PWD}/files/configure_e20c_services.sh" "${TGT_ROOT}" || exit 1
+bash "${PACKIT_HOME}/files/configure_e20c_services.sh" "${TGT_ROOT}" || exit 1
 adjust_openssl_config
 adjust_qbittorrent_config
 adjust_getty_config
