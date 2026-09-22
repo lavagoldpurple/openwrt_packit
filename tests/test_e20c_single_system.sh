@@ -23,6 +23,13 @@ grep -q "option enabled '0'" "${fixture}/etc/config/mysqld"
 [[ "$(awk '{print $2}' "${repo}/files/mariadb/SHA256SUMS" | sort -u | wc -l)" -eq 7 ]]
 while read -r hash package; do
     [[ "${hash}" =~ ^[a-f0-9]{64}$ && "${package}" == *_aarch64_generic.ipk ]]
+    name="${package%%_*}"
+    version="${package#*_}"
+    version="${version%_aarch64_generic.ipk}"
+    [[ -n "${name}" && -n "${version}" ]]
+    if [[ "${name}" == sudo ]]; then
+        [[ "${version}" == '1.9.17_p2-r1' ]]
+    fi
 done < "${repo}/files/mariadb/SHA256SUMS"
 
 if bash "${repo}/files/e20c-data-mounted" 2>/dev/null; then

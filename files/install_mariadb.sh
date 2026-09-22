@@ -69,7 +69,7 @@ chroot "${root}" /bin/sh -c \
 while read -r checksum filename; do
     package="${filename%%_*}"
     version="${filename#*_}"
-    version="${version%%_*}"
+    version="${version%_aarch64_generic.ipk}"
     chroot "${root}" /bin/opkg status "${package}" | grep -qx "Version: ${version}" || {
         echo "Installed package version mismatch: ${package}" >&2
         exit 1

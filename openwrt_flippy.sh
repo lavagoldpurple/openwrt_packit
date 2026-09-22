@@ -82,7 +82,7 @@ done
 while read -r checksum filename; do
     package="${filename%%_*}"
     version="${filename#*_}"
-    version="${version%%_*}"
+    version="${version%_aarch64_generic.ipk}"
     chroot "${verify_dir}/root" /bin/opkg status "${package}" | grep -qx "Version: ${version}" || fail "Locked dependency missing: ${package} ${version}."
 done < "${PACKIT_DIR}/files/mariadb/SHA256SUMS"
 chroot "${verify_dir}/root" /usr/bin/mysqld --version | grep -q '11.4.8' || fail 'MariaDB server binary is invalid.'
