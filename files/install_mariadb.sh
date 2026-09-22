@@ -5,7 +5,7 @@ root="${1:?rootfs mount is required}"
 repo="$(cd "$(dirname "$0")/.." && pwd)"
 lock="${repo}/files/mariadb/SHA256SUMS"
 cache="${repo}/src1/mariadb"
-feed='https://mirrors.tencent.com/lede/releases/24.10.3/packages/aarch64_generic/packages'
+feed_root='https://mirrors.tencent.com/lede/releases/24.10.3/packages/aarch64_generic'
 stage="${root}/tmp/e20c-mariadb-packages"
 offline_conf="${stage}/opkg.conf"
 
@@ -37,7 +37,8 @@ while read -r checksum filename; do
     }
     case "${filename}" in
         mariadb-client_11.4.8-r2_*|mariadb-server-base_11.4.8-r2_*|mariadb-server_11.4.8-r2_*|\
-        libaio_0.3.113-r3_*|libedit_20250104.3.1-r1_*|libfmt_11.0.2-r1_*|sudo_1.9.17_p2-r1_*) ;;
+        libaio_0.3.113-r3_*|libedit_20250104.3.1-r1_*|libfmt_11.0.2-r1_*|sudo_1.9.17_p2-r1_*) feed="${feed_root}/packages" ;;
+        wipefs_2.40.2-r1_*) feed="${feed_root}/base" ;;
         *) echo "Unexpected package in lock: ${filename}" >&2; exit 1 ;;
     esac
     [[ -z "${seen[${filename}]+x}" ]] || { echo "Duplicate package lock: ${filename}" >&2; exit 1; }
@@ -55,7 +56,7 @@ while read -r checksum filename; do
     }
     cp "${cache}/${filename}" "${stage}/${filename}"
 done < "${lock}"
-[[ "${count}" -eq 7 ]] || { echo 'Expected seven locked MariaDB packages.' >&2; exit 1; }
+[[ "${count}" -eq 8 ]] || { echo 'Expected eight locked database and first-boot packages.' >&2; exit 1; }
 
 mount --bind /dev "${root}/dev"
 mounted_dev=1
@@ -66,6 +67,10 @@ chroot "${root}" /bin/sh -c \
     'mkdir -p /var/lock &&
      opkg -f /tmp/e20c-mariadb-packages/opkg.conf install /tmp/e20c-mariadb-packages/*.ipk &&
      /usr/bin/mysqld --version && /usr/bin/mysql --version'
+chroot "${root}" /usr/sbin/wipefs --version | grep -F '2.40.2' || {
+    echo 'Pinned wipefs binary did not run correctly in the rootfs.' >&2
+    exit 1
+}
 while read -r checksum filename; do
     package="${filename%%_*}"
     version="${filename#*_}"

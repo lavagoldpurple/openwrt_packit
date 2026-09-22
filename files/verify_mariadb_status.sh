@@ -35,4 +35,4 @@ while read -r checksum filename; do
     }
     ((count += 1))
 done < "${lock}"
-[[ "${count}" -eq 7 ]] || { echo 'MariaDB validation: expected seven locked packages.' >&2; exit 1; }
+[[ "${count}" -eq 8 ]] || { echo 'MariaDB validation: expected eight locked packages.' >&2; exit 1; }

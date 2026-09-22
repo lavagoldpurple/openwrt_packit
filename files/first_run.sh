@@ -31,7 +31,9 @@ partition_end() { printf '%s\n' "$table" | awk -F: -v number="$1" '$1 == number 
 [ "$(partition_start 1):$(partition_size 1)" = '32768:1048576' ] || fail 'Unexpected boot partition geometry.'
 [ "$(partition_start 2):$(partition_size 2)" = '1081344:8388608' ] || fail 'Unexpected root partition geometry.'
 data_start=9469952
-disk_sectors="$(blockdev --getsz "$disk")"
+# The kernel exports whole-disk capacity in 512-byte sectors.
+read -r disk_sectors < "/sys/class/block/${disk##*/}/size" || fail 'Cannot read eMMC capacity.'
+case "$disk_sectors" in ''|*[!0-9]*) fail 'Invalid eMMC sector count.' ;; esac
 [ "$((disk_sectors - data_start))" -ge 2097152 ] || fail 'Less than 1 GiB remains for data.'
 
 data_device="${disk}p3"

@@ -122,6 +122,10 @@ echo "创建 /etc 子卷 ..."
 btrfs subvolume create $TGT_ROOT/etc
 extract_rootfs_files
 bash "${PACKIT_HOME}/files/install_mariadb.sh" "${TGT_ROOT}" || exit 1
+if ! bash "${PACKIT_HOME}/files/verify_first_boot_tools.sh" "${TGT_ROOT}"; then
+    detach_loopdev
+    exit 1
+fi
 extract_rockchip_boot_files
 
 echo "修改引导分区相关配置 ... "

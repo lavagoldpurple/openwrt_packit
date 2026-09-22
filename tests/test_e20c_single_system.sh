@@ -23,8 +23,8 @@ grep -q "option enabled '0'" "${fixture}/etc/config/mysqld"
 [[ ! -e "${fixture}/usr/sbin/openwrt-update-rockchip" ]]
 [[ -x "${fixture}/usr/libexec/e20c-data-mounted" ]]
 
-[[ "$(wc -l < "${repo}/files/mariadb/SHA256SUMS")" -eq 7 ]]
-[[ "$(awk '{print $2}' "${repo}/files/mariadb/SHA256SUMS" | sort -u | wc -l)" -eq 7 ]]
+[[ "$(wc -l < "${repo}/files/mariadb/SHA256SUMS")" -eq 8 ]]
+[[ "$(awk '{print $2}' "${repo}/files/mariadb/SHA256SUMS" | sort -u | wc -l)" -eq 8 ]]
 status_fixture="${fixture}/opkg.status"
 : > "${status_fixture}"
 while read -r hash package; do
@@ -39,6 +39,12 @@ while read -r hash package; do
     printf 'Package: %s\nVersion: %s\nStatus: install ok installed\n\n' "${name}" "${version}" >> "${status_fixture}"
 done < "${repo}/files/mariadb/SHA256SUMS"
 bash "${repo}/files/verify_mariadb_status.sh" "${status_fixture}" "${repo}/files/mariadb/SHA256SUMS"
+sed '/^Package: wipefs$/,/^$/d' "${status_fixture}" > "${fixture}/missing-wipefs.status"
+if output="$(bash "${repo}/files/verify_mariadb_status.sh" "${fixture}/missing-wipefs.status" "${repo}/files/mariadb/SHA256SUMS" 2>&1)"; then
+    echo 'Package validation accepted missing wipefs.' >&2
+    exit 1
+fi
+[[ "${output}" == *'wipefs 2.40.2-r1'* ]]
 sed -i 's/Version: 1.9.17_p2-r1/Version: 1.9.17/' "${status_fixture}"
 if bash "${repo}/files/verify_mariadb_status.sh" "${status_fixture}" "${repo}/files/mariadb/SHA256SUMS" 2>/dev/null; then
     echo 'Package validation accepted the wrong sudo version.' >&2
