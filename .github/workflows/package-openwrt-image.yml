@@ -21,7 +21,9 @@ jobs:
             util-linux curl tar xz-utils zstd pigz patch perl jq
 
       - name: Check asset validation
-        run: bash tests/test_e20c_assets.sh
+        run: |
+          bash tests/test_e20c_assets.sh
+          bash tests/test_e20c_cleanup.sh
 
       - name: Package E20C image
         uses: ./

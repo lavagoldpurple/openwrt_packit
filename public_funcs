@@ -176,9 +176,21 @@ function init_work_env() {
 }
 
 function detach_loopdev() {
-    umount -f "${TGT_ROOT}" "${TGT_BOOT}" 2>/dev/null || true
-    [ -n "${TGT_DEV}" ] && losetup -d "${TGT_DEV}"
-    rm -rf "${TEMP_DIR}"
+    # A shell whose cwd is inside the root mount prevents a clean unmount.
+    cd "${WORK_DIR}" || return 1
+    local mount_dir
+    for mount_dir in "${TGT_ROOT}" "${TGT_BOOT}"; do
+        if mountpoint -q "${mount_dir}"; then
+            umount "${mount_dir}" || {
+                echo "Unable to unmount ${mount_dir}; preserving the work directory." >&2
+                return 1
+            }
+        fi
+    done
+    if [ -n "${TGT_DEV:-}" ]; then
+        losetup -d "${TGT_DEV}" || return 1
+    fi
+    rmdir "${TGT_ROOT}" "${TGT_BOOT}" "${TEMP_DIR}"
 }
 
 function create_image() {
@@ -1456,7 +1468,7 @@ function create_snapshot() {
 # 清理环境
 function clean_work_env() {
     echo -n "清理环境 ... "
-    detach_loopdev
+    detach_loopdev || return 1
     sync
     echo "完成"
     echo

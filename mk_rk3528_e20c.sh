@@ -165,8 +165,9 @@ write_banner
 config_first_run
 create_snapshot "etc-000"
 write_uboot_to_disk
-clean_work_env
-mv ${TGT_IMG} ${OUTPUT_DIR} && sync
+clean_work_env || exit 1
+mv "${TGT_IMG}" "${OUTPUT_DIR}" || exit 1
+sync
 echo "镜像已生成! 存放在 ${OUTPUT_DIR} 下面!"
 echo "========================== end $0 ================================"
 echo
