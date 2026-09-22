@@ -5,7 +5,7 @@
 # License version 2. This program is licensed "as is" without any
 # warranty of any kind, whether express or implied.
 #
-# This file is a part of the make OpenWrt for Amlogic s9xxx tv box
+# E20C eMMC backup and restore helper
 # https://github.com/ophub/luci-app-amlogic
 #
 # Description: Backup and restore the system in emmc
@@ -63,6 +63,7 @@ get_root_partition_name() {
 do_checkemmc() {
 	# Get device name
 	mydevice_name="$(cat /proc/device-tree/model | tr -d '\000')"
+	[[ "${mydevice_name}" == 'Radxa E20C' ]] || error_msg "Only Radxa E20C is supported."
 	echo -e "${INFO} The device name: [ ${mydevice_name} ]"
 
 	# Find the partition where root is located

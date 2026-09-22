@@ -1,3 +1,5 @@
-#!/bin/bash
-#/usr/bin/mkimage -C none -A arm -T script -n 'flatmax load script' -d ../../bootfiles/rockchip/rk3528/h28k/boot.cmd ../../bootfiles/rockchip/rk3528/h28k/boot.scr
-../../rk3588/rock5b/mkimage -C none -A arm -T script -n 'flatmax load script' -d ../../bootfiles/rockchip/rk3528/h28k/boot.cmd ../../bootfiles/rockchip/rk3528/h28k/boot.scr
+#!/usr/bin/env bash
+set -e
+script_dir="$(cd "$(dirname "$0")" && pwd)"
+boot_dir="${script_dir}/../../bootfiles/rockchip/rk3528/e20c"
+mkimage -C none -A arm -T script -n 'E20C boot script' -d "${boot_dir}/boot.cmd" "${boot_dir}/boot.scr"

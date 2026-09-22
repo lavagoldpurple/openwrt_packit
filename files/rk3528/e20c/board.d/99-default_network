@@ -1,4 +1,4 @@
-# The default order of phy interfaces for h66k is
+# E20C Ethernet interface order:
 # eth0(2.5G) eth1(2.5G)
 
 . /lib/functions/uci-defaults.sh

@@ -1,20 +1,7 @@
-name: 'Package OpenWrt firmware for Armvirt targets'
-author: 'ophub'
-description: 'Package Armvirt rootfs into OpenWrt firmware images. Supports Allwinner, Rockchip, and Amlogic S9xxx series devices.'
-inputs:
-  mode:
-    description: 'Select the packaging script to use.'
-    required: false
-    default: 'flippy'
-
+name: Package E20C OpenWrt image
+description: Package a pinned Armv8 rootfs and rk35xx kernel into an E20C image.
 runs:
-  using: "composite"
+  using: composite
   steps:
     - shell: bash
-      run: |
-        cd "${GITHUB_ACTION_PATH}"
-        ./openwrt_flippy.sh
-      
-branding:
-  icon: 'terminal'
-  color: 'gray-dark'
+      run: sudo "${GITHUB_ACTION_PATH}/openwrt_flippy.sh"

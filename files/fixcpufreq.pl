@@ -3,13 +3,9 @@
 use strict;
 use File::Basename;
 
-my $uci_config_name;
-if(-f "/etc/config/amlogic") {
-	$uci_config_name="amlogic";
-} elsif(-f "/etc/config/cpufreq") {
-	$uci_config_name="cpufreq";
-} else {
-	print "Can not found amlogic or cpufreq config file!\n";
+my $uci_config_name = "cpufreq";
+if(!-f "/etc/config/cpufreq") {
+	print "Can not find cpufreq config file!\n";
 	exit(0);
 }
 
@@ -48,11 +44,7 @@ sub fix_invalid_value {
 
 	my $uci_section = "settings";
 	my $uci_option;
-	if($uci_config eq "cpufreq" ) {
-       	    $uci_option = "governor";
-	} else {
-       	    $uci_option = "governor" . $policy_id;
-	}
+	$uci_option = "governor";
 	# 如果未设置 governor, 或该 goveernor 不存在， 则修败默认值为 schedutil
 	my $config_gove = &uci_get_by_type($uci_config, $uci_section, $uci_option, "NA");
 	if( ($config_gove eq "NA") ||
@@ -62,12 +54,8 @@ sub fix_invalid_value {
 	}
 
 	# 如果出现不存在的 minfreq, 则修改为实际的 min_freq
-	if($uci_config eq "cpufreq" ) {
-		# "minifreq" is a spelling error that has always existed in the upstream source code
-		$uci_option = "minifreq"; 
-	} else {
-		$uci_option = "minfreq" . $policy_id;
-	}
+	# "minifreq" is a spelling error in the upstream cpufreq config.
+	$uci_option = "minifreq";
 	my $config_min_freq = &uci_get_by_type($uci_config, $uci_section, $uci_option, "0");
 	if($freq_hash{$config_min_freq} != 1) {
 		&uci_set_by_type($uci_config, $uci_section, $uci_option, $min_freq);
@@ -76,11 +64,7 @@ sub fix_invalid_value {
 
 	# 如果出现不存在的 maxfreq
 	# 或 maxfreq < minfreq, 则修改为实际的 max_freq
-	if($uci_config eq "cpufreq" ) {
-		$uci_option = "maxfreq";
-	} else {
-		$uci_option = "maxfreq" . $policy_id;
-	}
+	$uci_option = "maxfreq";
 	my $config_max_freq = &uci_get_by_type($uci_config, $uci_section, $uci_option, "0");
 	if( ( $freq_hash{$config_max_freq} != 1) || 
             ( $config_max_freq < $config_min_freq)) {

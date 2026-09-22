@@ -90,19 +90,9 @@ error_msg() {
     exit 1
 }
 
-if dmesg | grep 'meson' >/dev/null 2>&1; then
-    PLATFORM="amlogic"
-elif dmesg | grep 'rockchip' >/dev/null 2>&1; then
-    PLATFORM="rockchip"
-elif dmesg | grep 'sun50i-h6' >/dev/null 2>&1; then
-    PLATFORM="allwinner"
-else
-    source /etc/flippy-openwrt-release
-    case ${PLATFORM} in
-    amlogic | rockchip | allwinner | qemu-aarch64) : ;;
-    *) error_msg "Unknown platform, only support amlogic or rockchip or allwinner h6 or qemu-aarch64!" ;;
-    esac
-fi
+source /etc/flippy-openwrt-release
+[[ "${PLATFORM}" == rockchip && "${SOC}" == rk3528 && "${BOARD}" == e20c ]] || error_msg "Only Radxa E20C is supported."
+[[ "$(tr -d '\000' </proc/device-tree/model)" == 'Radxa E20C' ]] || error_msg "This device is not a Radxa E20C."
 
 get_root_partition_name() {
     local paths=("/" "/overlay" "/rom")

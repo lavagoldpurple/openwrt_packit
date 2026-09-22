@@ -1,7 +1,7 @@
 #!/bin/bash
 
 echo "========================= begin $0 ================="
-source make.env
+source make.env || exit 1
 source public_funcs
 init_work_env
 
@@ -15,18 +15,11 @@ SFE_FLOW=1
 PLATFORM=rockchip
 SOC=rk3528
 BOARD=e20c
-SUBVER=$1
-
-#if [ -n "$RK35XX_KERNEL_VERSION" ];then
-#    # lock the kernel version
-#    KERNEL_VERSION=$RK35XX_KERNEL_VERSION
-#    LOCK_KERNEL=${KERNEL_VERSION}
-#fi
 
 # Kernel image sources
 ###################################################################
 KERNEL_TAGS="rk35xx"
-KERNEL_BRANCHES="bsp:rk35xx:>=:5.10 mainline:all:>=:6.12"
+KERNEL_BRANCHES="bsp:rk35xx:>=:6.1"
 MODULES_TGZ=${KERNEL_PKG_HOME}/modules-${KERNEL_VERSION}.tar.gz
 check_file ${MODULES_TGZ}
 BOOT_TGZ=${KERNEL_PKG_HOME}/boot-${KERNEL_VERSION}.tar.gz
@@ -41,12 +34,11 @@ check_file ${OPWRT_ROOTFS_GZ}
 echo "Use $OPWRT_ROOTFS_GZ as openwrt rootfs!"
 
 # Target Image
-TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}${SUBVER}.img"
+TGT_IMG="${WORK_DIR}/openwrt_${SOC}_${BOARD}_${OPENWRT_VER}_k${KERNEL_VERSION}.img"
 
 # patches、scripts
 ####################################################################
 CPUSTAT_SCRIPT="${PWD}/files/cpustat"
-CPUSTAT_SCRIPT_PY="${PWD}/files/cpustat.py"
 INDEX_PATCH_HOME="${PWD}/files/index.html.patches"
 GETCPU_SCRIPT="${PWD}/files/getcpu"
 KMOD="${PWD}/files/kmod"
@@ -56,8 +48,6 @@ FIRSTRUN_SCRIPT="${PWD}/files/first_run.sh"
 
 DAEMON_JSON="${PWD}/files/rk3528/daemon.json"
 
-TTYD="${PWD}/files/ttyd"
-FLIPPY="${PWD}/files/scripts_deprecated/flippy_cn"
 BANNER="${PWD}/files/banner"
 
 # 20200314 add
@@ -83,7 +73,6 @@ BAL_CONFIG="${PWD}/files/rk3528/e20c/balance_irq"
 # 20210307 add
 SS_LIB="${PWD}/files/ss-glibc/lib-glibc.tar.xz"
 SS_BIN="${PWD}/files/ss-glibc/armv8a_crypto/ss-bin-glibc.tar.xz"
-JQ="${PWD}/files/jq"
 
 # 20210330 add
 DOCKERD_PATCH="${PWD}/files/dockerd.patch"
@@ -92,14 +81,13 @@ DOCKERD_PATCH="${PWD}/files/dockerd.patch"
 FIRMWARE_TXZ="${PWD}/files/firmware_armbian.tar.xz"
 BOOTFILES_HOME="${PWD}/files/bootfiles/rockchip/rk3528/e20c"
 GET_RANDOM_MAC="${PWD}/files/get_random_mac.sh"
-BOOTLOADER_IMG="${PWD}/files/rk3528/e20c/bootloader.bin"
+BOOTLOADER_IMG="${PWD}/files/rk3528/e20c/idbloader.img"
 
 # 20210618 add
 DOCKER_README="${PWD}/files/DockerReadme.pdf"
 
 # 20210704 add
 SYSINFO_SCRIPT="${PWD}/files/30-sysinfo.sh"
-FORCE_REBOOT="${PWD}/files/rk3528/reboot"
 
 # 20210923 add
 OPENWRT_KERNEL="${PWD}/files/openwrt-kernel"
@@ -107,7 +95,6 @@ OPENWRT_BACKUP="${PWD}/files/openwrt-backup"
 OPENWRT_UPDATE="${PWD}/files/openwrt-update-rockchip"
 # 20211214 add
 P7ZIP="${PWD}/files/7z"
-# 20211217 add
 DDBR="${PWD}/files/openwrt-ddbr"
 # 20220225 add
 SSH_CIPHERS="aes256-gcm@openssh.com,aes128-gcm@openssh.com,aes256-ctr,aes192-ctr,aes128-ctr,chacha20-poly1305@openssh.com"
@@ -118,8 +105,6 @@ BOARD_HOME="${PWD}/files/rk3528/e20c/board.d"
 MODULES_HOME="${PWD}/files/rk3528/modules.d"
 # 20221123 add
 BOARD_MODULES_HOME="${PWD}/files/rk3528/e20c/modules.d"
-# 20221013 add
-WIRELESS_CONFIG="${PWD}/files/rk3528/e20c/wireless"
 # 20250505 add
 RC_BUTTON_HOME="${PWD}/files/rk3528/e20c/rc.button"
 ####################################################################
@@ -175,7 +160,6 @@ adjust_ntfs_config
 adjust_mosdns_config
 patch_admin_status_index_html
 adjust_kernel_env
-copy_uboot_to_fs
 write_release_info
 write_banner
 config_first_run
